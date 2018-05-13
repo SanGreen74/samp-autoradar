@@ -1,4 +1,6 @@
 require "lib.moonloader"
+require "lib.autoradar.criminalHelper"
+
 local key = require 'lib.vkeys'
 
 local _wantedTextDrawInfo = {}
