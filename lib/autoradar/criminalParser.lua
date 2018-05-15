@@ -1,33 +1,36 @@
 require "lib.moonloader"
-require "lib.autoradar.criminalHelper"
 
+local h = {}
 local key = require 'lib.vkeys'
-
 local _wantedTextDrawInfo = {}
 _wantedTextDrawInfo.firstId = 2000
 _wantedTextDrawInfo.lastId = 2200
 
-function getCriminalsFromWanted()
+function h.bindParams(cHelper)
+  h.cHelper = cHelper
+end
+
+function h.getCriminalsFromWanted()
   sampSendChat("/wanted")
   notification("Команда /wanted отправлена в чат")
-  if (not waitExpression(3000, function() return getTdIdByPattern("^VEHICLE INFO$") ~= -1 end)) then
-    error("Не удалось открыть /wanted лист") end
+  if (not h.waitExpression(3000, function() return h.getTdIdByPattern("^VEHICLE INFO$") ~= -1 end)) then
+    error("Не удалось открыть /wanted лист") return nil end
   local result = {}
   while true do 
-    textDrawParseCriminals(result) 
-    local nextPageId = getTdIdByPattern("^>$")
+    h.textDrawParseCriminals(result) 
+    local nextPageId = h.getTdIdByPattern("^>$")
     if (nextPageId == -1) then break end
-    local current = getTdIdByPattern("^1.%s~y~~h~~h~(%w+_%w+)~w~$")
-    local isTextDrawSwitched = function() return current == getTdIdByPattern("^1.%s~y~~h~~h~(%w+_%w+)~w~$") end
+    local current = h.getTdIdByPattern("^1.%s~y~~h~~h~(%w+_%w+)~w~$")
+    local isTextDrawSwitched = function() return current == h.getTdIdByPattern("^1.%s~y~~h~~h~(%w+_%w+)~w~$") end
     sampSendClickTextdraw(nextPageId)
-    if (not waitExpression(3000, isTextDrawSwitched)) then
-      error("Не удалось переключиться на следующий страницу") return end
+    if (not h.waitExpression(3000, isTextDrawSwitched)) then
+      error("Не удалось переключиться на следующий страницу") return nil end
     wait(300)
   end
   return result
 end
 
-function waitExpression(timeout, expression)
+function h.waitExpression(timeout, expression)
   local counter = 0
   while(counter <= timeout) do
     counter = counter + 100
@@ -37,7 +40,7 @@ function waitExpression(timeout, expression)
   return false
 end
 
-function getTdIdByPattern(pattern)
+function h.getTdIdByPattern(pattern)
   for i = _wantedTextDrawInfo.firstId, _wantedTextDrawInfo.lastId do
     local text = sampTextdrawGetString(i)
     if (text ~= nil and string.match(text, pattern)) then
@@ -47,13 +50,15 @@ function getTdIdByPattern(pattern)
   return -1
 end
 
-function refreshWantedList(collection)
+function h.refreshWantedList()
   lua_thread.create(function()
     local count = 0 
     if (sampTextdrawGetString(_wantedTextDrawInfo.exit) ~= "") then
       error("Необходимо закрыть текущий TextDraw") return end
-    for key, value in pairs(getCriminalsFromWanted()) do
-      collection[key] = value
+    local peoplesFromWanted = h.getCriminalsFromWanted()
+    if (peoplesFromWanted == nil) then return end
+    for nick, crimeLvl in pairs(peoplesFromWanted) do
+      h.cHelper.addCriminal(nick, crimeLvl)
       count = count + 1
     end
     notification(string.format("Количество обновленных преступников: %d", count))
@@ -61,15 +66,17 @@ function refreshWantedList(collection)
   end) 
 end
 
-function textDrawParseCriminals(inCollection)
+function h.textDrawParseCriminals(result)
   for i = _wantedTextDrawInfo.firstId, _wantedTextDrawInfo.lastId do
     local text = sampTextdrawGetString(i)
     if (text ~= nil) then
       local nick = string.match(text, "^%d+.%s~y~~h~~h~([a-zA-Z_]+)~w~$")
       if (nick ~= nil) then 
-        local crimeLvl = calculateCrimeLvl(sampTextdrawGetString(i + 1))
-        addCriminal(nick, crimeLvl, inCollection)
+        local crimeLvl = h.cHelper.calculateCrimeLvl(sampTextdrawGetString(i + 1))
+        result[nick] = crimeLvl
       end
     end
   end 
 end
+
+return h

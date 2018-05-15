@@ -1,55 +1,30 @@
 require "lib.moonloader"
-require "lib.autoradar.onMessageHandler" 
-require "lib.autoradar.criminalParser"
-require "lib.autoradar.criminalHelper"
 require "lib.autoradar.notifications"
 require "lib.autoradar.cars"
+WHITE_LIST = {}
 
-local imgui = require 'imgui'
+local cHelper = require 'lib.autoradar.criminalHelper'
+local msgHandler = require 'lib.autoradar.onMessageHandler'
+local cParser = require "lib.autoradar.criminalParser"
+local gui = require 'lib.autoradar.gameGui'
+            
 local events = require "lib.samp.events"
 local key = require 'lib.vkeys' 
-
-_wanted = {} 
+local _wanted = {} 
 local _pursitsPlayer = {}
-local main_window_state = imgui.ImBool(false) 
 
-function main() 
+function main()
   if not isSampfuncsLoaded() or not isSampLoaded() then return end
   while not isSampAvailable() do wait(100) end
+  updateSettings()  
   sampAddChatMessage("Script activated", -1)
-  sampRegisterChatCommand("set", setStringFromTextDraw) 
-  sampRegisterChatCommand("wr", wr) 
-  sampRegisterChatCommand("refresh", refreshWantedList)
-  lua_thread.create(function() checkWantedPlayers(_wanted, _pursitsPlayer, 5000) end)
-  lua_thread.create(function()
-    while true do 
-      local tmp = removeOfflineUsers(copyTable(_wanted))
-      for key, _ in pairs(tmp) do
-        _wanted[key] = nil
-        sampAddChatMessage("ѕользователь вышел из игры " .. key, 0xff0000) --todo
-      end
-      wait(30000)
-    end
-  end)
   while true do
     wait(0) 
-    if wasKeyPressed(key.VK_X) then
-      main_window_state.v = not main_window_state.v 
-    end
-    imgui.Process = main_window_state.v
-  end
+  end  
 end
 
 function events.onServerMessage(color, text)
-  handleMessage(text, _wanted) 
-end
-
-function copyTable(table)
-  local newTable = {}
-  for key,value in pairs(table) do
-    newTable[key] = value
-  end
-  return newTable 
+  msgHandler.handleMessage(text)
 end 
 
 function wr(data)
@@ -58,39 +33,49 @@ function wr(data)
   end
 end
 
-function imgui.OnDrawFrame()
-  if main_window_state.v then 
-    imgui.SetNextWindowSize(imgui.ImVec2(150, 200), imgui.Cond.FirstUseEver) -- мен€ем размер
-
-    imgui.Begin('My window', main_window_state)
-    imgui.Text('Hello world')
-    if imgui.Button('Press me') then
-      refreshWantedList(_wanted)
-    end
-    imgui.End()
-  end
-end
-
-
-function getStringFromTextDraw(data)
-  if (data == "" or data == nil) then
-    sampAddChatMessage("Incorrect input", -1)
-    return
-  end
-
-  local text = sampTextdrawGetString(data)
-  sampAddChatMessage(text, 0xffff00)
-end
-
 function setStringFromTextDraw(data)
   local name = sampGetPlayerNickname(data)
-  _wanted[name] = 6
+  if (setContainsKey(_wanted, name)) then 
+  _wanted[name] = nil 
+  return end     
+  _wanted[name] = 5
 end
 
-function split(s, delimiter)
-    result = {};
-    for match in (s..delimiter):gmatch("(.-)"..delimiter) do
-        table.insert(result, match);
-    end
-    return result;
+function updateSettings() 
+  local settings = {}
+  cHelper.bindParams(_wanted, _pursitsPlayer, getCHelperSettings())
+  msgHandler.bindParams(cHelper)
+  cParser.bindParams(cHelper)  
+  gui.bindParams(cParser)
+  registerCommands() 
+  startBackgroundFunction()
+end
+
+function getCHelperSettings()
+  local settings = {}
+  settings.isActive = gui.isWantedFinderActive
+  settings.minStars = gui.minStarsCount
+  return settings
+end
+
+function openMainWindow(params)
+  if (canOpenImguiWindow()) then
+    gui.changeMainWindowsState()
+  end     
+end
+
+function canOpenImguiWindow()
+  return (not sampIsDialogActive())
+end
+ 
+function startBackgroundFunction()
+  lua_thread.create(function() cHelper.checkWantedPlayers(5000, gui.isWantedFinderActive) end) 
+  lua_thread.create(function() cHelper.removeOfflineUsers(30000) end)
+end
+
+function registerCommands()
+  sampRegisterChatCommand("set", setStringFromTextDraw) 
+  sampRegisterChatCommand("wr", wr)
+  sampRegisterChatCommand("refresh", function(notUsed) cParser.refreshWantedList() end) 
+  sampRegisterChatCommand("aradar", openMainWindow)
 end
