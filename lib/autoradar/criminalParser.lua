@@ -52,6 +52,7 @@ end
 
 function h.refreshWantedList()
   lua_thread.create(function()
+    sampSetChatInputEnabled(false)
     local count = 0 
     if (sampTextdrawGetString(_wantedTextDrawInfo.exit) ~= "") then
       error("Необходимо закрыть текущий TextDraw") return end

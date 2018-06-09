@@ -3,16 +3,19 @@ require "lib.autoradar.cars"
 
 local h = {}
 
-function h.bindParams(wantedCollection, pursitCollection, settings)
+function h.bindParams(wantedCollection, pursitCollection)
   h.wanted = wantedCollection
   h.pursit = pursitCollection
-  h.isActive = settings.isActive
-  h.minStars = settings.minStars
   h.count = 0  
 end
 
+function h.setSettings(settings)
+  h.isActive = settings.isWantedFinderActive
+  h.minStars = settings.minStarsCount
+  h.maxDistance = settings.maxDistance
+end
+
 function h.addCriminal(nick, crimeLvl)
-  sampAddChatMessage(h.minStars.v, -1)  
   if (not setContainsKey(h.wanted, nick)) then
     h.count = h.count + 1 
   end
@@ -58,10 +61,27 @@ function h.removeOfflineUsers(frequency)
   while true do 
     local offlineUsers = h.getOfflineUsers(h.copyTable(h.wanted))
     for key, _ in pairs(offlineUsers) do
-      h.wanted[key] = nil
-      sampAddChatMessage("ѕользователь вышел из игры " .. key, 0xff0000) --todo
+      -- h.wanted[key] = nil
+      h.removeCriminal(key)
     end
     wait(frequency)
+  end
+end
+
+function h.clearAllCollections()
+  h.clearWantedCollection()
+  h.clearPursitCollection()
+end
+
+function h.clearWantedCollection()
+  for k, _ in pairs(h.wanted) do
+    h.removeCriminal(k)
+  end
+end
+
+function h.clearPursitCollection()
+  for k, _ in pairs(h.pursit) do
+    h.pursit[k] = nil
   end
 end
 
@@ -73,14 +93,14 @@ function h.copyTable(table)
   return newTable 
 end 
 
-function h.checkWantedPlayers(timeout, isActive)
+function h.checkWantedPlayers(timeout)
   while true do
-    if (isActive.v) then
-      wait(timeout)
+    wait(timeout)
+    if (h.isActive.v) then
       for id = 0, sampGetMaxPlayerId(false) do
         if (sampIsPlayerConnected(id)) then
           local name = sampGetPlayerNickname(id)
-          if (h.canStartSurveillance(name)) then
+          if (h.canStartSurveillance(name, id)) then
             local result, ped = sampGetCharHandleBySampPlayerId(id) 
             if (result) then 
               local cancellationToken = function() return not setContainsKey(h.wanted, name) end
@@ -93,24 +113,34 @@ function h.checkWantedPlayers(timeout, isActive)
   end
 end
 
-function h.canStartSurveillance(nick)
+function h.canStartSurveillance(nick, id)
   return (setContainsKey(h.wanted, nick) 
           and not setContainsKey(h.pursit, nick)
-          and h.wanted[nick] + 0 >= h.minStars.v)
+          and h.wanted[nick] + 0 >= h.minStars.v
+          and h.getDistanceToPlayer(id) + 0 <= h.maxDistance.v + 0)
 end
 
+function h.getDistanceToPlayer(data)
+  local result, ped = sampGetCharHandleBySampPlayerId(data)
+  if (not result) then return 999999 end
+  local x, y, _ = getCharCoordinates(PLAYER_PED)
+  local x1, y1, _ = getCharCoordinates(ped)
+  return getDistanceBetweenCoords2d(x, y, x1, y1)
+end 
+
 function h.startSurveillance(nick, id, cancellationToken)
-  if (setContainsKey(WHITE_LIST, nick)) then return end
+  --if (setContainsKey(WHITE_LIST, nick)) then return end
   h.pursit[nick] = true
   local messageToPlayer = h.getSuspectInfo(nick, id)
   if (messageToPlayer ~= "") then
-    dispatcherNotifications(messageToPlayer)
+    dispatcherNotification(messageToPlayer)
   end
   h.hangCheckpoint(id, cancellationToken)
   h.pursit[nick] = nil
 end
 
 function h.getSuspectInfo(nick, id)
+  sampAddChatMessage(nick .. " -> " .. id, -1)
   local isNear, ped = sampGetCharHandleBySampPlayerId(id)
   if (not isNear) then return "" end
   local info = string.format("–€дом подозреваемый {FFFFFF}%s{ff0066}", nick)
@@ -120,7 +150,7 @@ function h.getSuspectInfo(nick, id)
   else
     info = info .. ", передвигаетс€ на транспорте: {FFFFFF}" .. carModel
   end
-  return info
+  return info .. " {FFFF00}" .. h.wanted[nick] .. " зв."
 end
 
 function h.hangCheckpoint(id, cancellationToken)
@@ -149,7 +179,12 @@ function h.moveCheckpointToPlayer(id, checkpoint, timeout, frequency, cancellati
 end
 
 function h.getPlayerCarModelByPed(ped)
+  sampAddChatMessage(ped, -1)
+  if (not doesCharExist(ped) or not isCharInAnyCar(ped)) then 
+    sampAddChatMessage("nogi", -1) 
+  return "" end
   local carHandle = storeCarCharIsInNoSave(ped)
+  sampAddChatMessage("AfterStore", -1)
   if (carHandle <= 0) then return "" end
   return getVehicleNameById(getCarModel(carHandle))
 end

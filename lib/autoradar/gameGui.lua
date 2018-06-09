@@ -1,14 +1,16 @@
 local imgui = require 'lib.imgui'
 local encoding = require 'encoding'
+local h = {}
+
 encoding.default = 'CP1251'
 u8 = encoding.UTF8
+
 function apply_custom_style()
 	imgui.SwitchContext()
 	local style = imgui.GetStyle()
 	local colors = style.Colors
 	local clr = imgui.Col
 	local ImVec4 = imgui.ImVec4
-
 	style.WindowRounding = 2.0
 	style.WindowTitleAlign = imgui.ImVec2(0.5, 0.84)
 	style.ChildWindowRounding = 2.0
@@ -19,7 +21,7 @@ function apply_custom_style()
 	style.GrabMinSize = 8.0
 	style.GrabRounding = 1.0
 	-- style.Alpha =
-	-- style.WindowPadding =
+	-- style.WindowPadding = imgui.ImVec2(5.0, 12.0)
 	-- style.WindowMinSize =
 	-- style.FramePadding =
 	-- style.ItemInnerSpacing =
@@ -77,17 +79,19 @@ function apply_custom_style()
 	colors[clr.TextSelectedBg]         = ImVec4(0.26, 0.59, 0.98, 0.35)
 	colors[clr.ModalWindowDarkening]   = ImVec4(0.80, 0.80, 0.80, 0.35)
 end
+
+function applySettings()
+  h.settings = {}
+  h.settings.isWantedFinderActive = imgui.ImBool(false)
+  h.settings.minStarsCount = imgui.ImInt(2)
+  h.settings.maxDistance = imgui.ImInt(100) 
+end
+
 apply_custom_style()
+applySettings()
 
-local h = {}
-h.font_changed = false
-h.isWantedFinderActive = imgui.ImBool(true)
-
-h.minStarsCount = imgui.ImInt(1)
 h.main_window_state = imgui.ImBool(false) 
-h.is_radar_working = imgui.ImBool(false)
 h.show_cursor = imgui.ImBool(imgui.ShowCursor)
-
 function h.bindParams(cParser)
   h.cParser = cParser
 end
@@ -97,55 +101,83 @@ function h.changeMainWindowsState()
   imgui.Process = h.main_window_state
 end
 
-local wSize = imgui.ImVec2(300, 140)
-
+local wSize = imgui.ImVec2(300, 200)
 function imgui.OnDrawFrame()
   if h.main_window_state.v then 
     local sw, sh = getScreenResolution()
     imgui.SetNextWindowSize(wSize, imgui.Cond.FirstUseEver) 
 		imgui.SetNextWindowPos(imgui.ImVec2(sw / 2, sh / 2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
-    imgui.Begin('AutoRadar for Diamond-RP', h.main_window_state)
+    imgui.Begin('AutoRadar for Diamond-RP', h.main_window_state, imgui.WindowFlags.NoResize)
     if (imgui.Checkbox(u8'Включить курсор', h.show_cursor)) then
       imgui.ShowCursor = h.show_cursor.v
     end
-    imgui.Text(u8'Если курсора не видно')
-    imgui.Text(u8'откройте чат и вклюите курсор')
-    if (imgui.Checkbox(u8'Активировать радар', h.is_radar_working)) then 
-      if (h.is_radar_working.v) then 
-        notification("Вы активировали радар")
-        wSize = imgui.ImVec2(300, 220)
-      else 
-        imgui.ImVec2(300, 120)
-        notification("Вы деактивировали радар") 
-      end
-      imgui.SetWindowSize('AutoRadar for Diamond-RP', wSize)
+    imgui.Text(u8'Если курсора не видно\nоткройте чат и вклюите курсор')
+    if (imgui.Checkbox(u8'Активировать радар', h.settings.isWantedFinderActive)) then 
+      onRadarChangeStatus()
     end
 
-    if (h.is_radar_working.v) then
-      if (imgui.Button(u8'Обновить список подозреваемых')) then
-        h.cParser.refreshWantedList()
-      end
-      imgui.Text(u8'Минимальное кол-во')
-      imgui.SliderInt('', h.minStarsCount, 1, 6)
-      imgui.Text(u8(string.format("Количество преступников:%d", h.cParser.cHelper.count)))
+    if (h.settings.isWantedFinderActive.v) then
+      addRadarMenu()
     end
+    imgui.Text(u8'Список команд\n/aradar - меню авторадара\n/tdist - расстояние до игрока\n/refresh - обновить преступников')
     imgui.SetWindowFontScale(1.2)
-    -- if imgui.CollapsingHeader('Options') then
-    --   if imgui.Checkbox('Render in menu', h.test) then
-    --   end
-    -- end
-    -- if h.test.v then
-    --   if imgui.Button('Refresh wanted list') then
-    --     h.cParser.refreshWantedList() 
-    --   end
-    -- end
-
-    -- if imgui.Button("Write all criminals") then
-    --     h.criminal.v = not h.criminal.v
-    -- end
     imgui.End()
   end
 
+  function addSliders()
+    addMinStartCountSlider()
+    addMinDistanceSlider()
+  end
+
+  function addMinStartCountSlider() 
+    imgui.Text(u8'Минимальный уровень розыска')
+    imgui.HelpMarker("Минимальный уровень розыска для срабатывания радара")
+    imgui.SliderInt('##minStars', h.settings.minStarsCount, 1, 6)
+  end
+
+  function addMinDistanceSlider()
+    imgui.Text(u8'Радиус срабатывания скрипта')
+    imgui.SliderInt('##maxDistance', h.settings.maxDistance, 1, 250)
+    imgui.HelpMarker("Максимальная дистанция реагирования на преступников")
+  end
+
+  function addRadarMenu()
+    if (imgui.Button(u8'Обновить список подозреваемых')) then
+      h.cParser.refreshWantedList()
+    end
+    addSliders()
+    imgui.Text(u8(string.format("Количество преступников: %d", h.cParser.cHelper.count)))
+  end
+
+  function onRadarChangeStatus()
+    if (h.settings.isWantedFinderActive.v) then 
+      notification("Вы активировали радар")
+      wSize = imgui.ImVec2(300, 330)
+    else 
+      wSize = imgui.ImVec2(300, 200)
+      notification("Вы деактивировали радар") 
+      h.cParser.cHelper.clearAllCollections()
+    end
+    imgui.SetWindowSize('AutoRadar for Diamond-RP', wSize)
+  end
+
+  function setImguiSettings(sw, sh)
+    imgui.SetNextWindowSize(wSize, imgui.Cond.FirstUseEver) 
+		imgui.SetNextWindowPos(imgui.ImVec2(sw / 2, sh / 2), imgui.Cond.FirstUseEver, imgui.ImVec2(0.5, 0.5))
+    imgui.Begin('AutoRadar for Diamond-RP', h.main_window_state, imgui.WindowFlags.NoResize)
+  end
+
+  function imgui.HelpMarker(text) 
+    imgui.SameLine() 
+    imgui.TextDisabled('(?)') 
+    if imgui.IsItemHovered() then 
+      imgui.BeginTooltip() 
+      imgui.PushTextWrapPos(imgui.GetFontSize() * 35) 
+      imgui.TextUnformatted(u8(text)) 
+      imgui.PopTextWrapPos() 
+      imgui.EndTooltip() 
+    end 
+  end
   -- if h.criminal.v then 
   --   imgui.SetNextWindowSize(imgui.ImVec2(300, 300), imgui.Cond.FirstUseEver) 
   --   imgui.Begin(u8'Заключенные', h.criminal)

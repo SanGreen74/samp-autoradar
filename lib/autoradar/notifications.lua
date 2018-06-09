@@ -9,6 +9,6 @@ function notification(text)
   sampAddChatMessage("[Notification] " ..text, 0xff00bb)
 end
 
-function dispatcherNotifications(text)
+function dispatcherNotification(text)
   sampAddChatMessage("[Диспетчер] " .. text, 0xff0066)
 end
